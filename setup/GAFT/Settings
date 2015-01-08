@@ -1,0 +1,54 @@
+#      ,#####    ###    ,#############
+#     ###  `##  ## ##   ###      ##
+#    ,##       ##   ##  ######   ##
+#    ### ##### ######## #####'  ,##
+#    ###   ######   `#####      ###
+#    `#########'      ####     ####
+#
+# | kermage | PrivaTech -- GAFT | iMUT |
+# Copyright 2014 Gene Alyson F. Torcende
+# Email: genealyson.torcende@gmail.com
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# All rights reserved.
+
+
+###    DO NOT CHANGE anything below    ###
+### unless you know what you are doing ###
+# GAFT version number
+VERSION=0
+
+### Switches // 0 - Off | 1 - On ###
+ENTROPY_SWITCH=1
+HOTPLUG_SWITCH=1
+SMOOTHIE_SWITCH=1
+
+### Smoothie Process List ###
+# START #
+android.process.acore=-20
+android.process.media=-18
+com.android.browser=-18
+com.android.camera=-18
+com.android.contacts=-19
+com.android.dialer=-19
+com.android.gallery3d=-18
+com.android.mms=-19
+com.android.phone=-19
+com.android.settings=-19
+com.android.systemui=-20
+com.android.vending=-18
+com.android.chrome=-17
+com.estrongs.android.pop=-17
+com.facebook.katana=-17
+# END #

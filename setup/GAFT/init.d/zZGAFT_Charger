@@ -1,0 +1,153 @@
+#!/system/bin/sh
+
+#      ,#####    ###    ,#############
+#     ###  `##  ## ##   ###      ##
+#    ,##       ##   ##  ######   ##
+#    ### ##### ######## #####'  ,##
+#    ###   ######   `#####      ###
+#    `#########'      ####     ####
+#
+# | kermage | PrivaTech -- GAFT | iMUT |
+# Copyright 2014 Gene Alyson F. Torcende
+# Email: genealyson.torcende@gmail.com
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# All rights reserved.
+
+# The script includes:
+# - Seeder Entropy Generator (Created by lambgx02 @XDA)
+# --- Lightweight profile. //just enough to keep entropy level high
+# --- Skips if conflicting entropy generator is found.
+# - GAFT's Hotplug Tweaks and Profiler
+# --- Better battery backup by scaling down CPU's max frequencies
+#     based on battery percent and screen state profiles.
+# --- Skips if conflicting overclocker is found.
+
+
+###    DO NOT CHANGE anything below    ###
+### unless you know what you are doing ###
+GAFT=/data/GAFT
+alias BUSYBOX='$GAFT/bin/busybox'     # Use included busybox
+LOG_FILE=$GAFT/logs/Charger.log       # Log location
+ERROR_LOG=$GAFT/logs/Error.log        # Error Log
+SLEEP_TIME=3
+# Check time in seconds; used at battery profile check.
+# A minute should be more than enough to recheck battery level.
+CHECK_TIME=60
+
+# Script PID Check
+PID=`BUSYBOX ps | grep ${0##*/} | grep -v grep | grep -v $$ | BUSYBOX awk '{print $1}'`
+if [ ! -z $PID ]; then
+  # If script PID is present, still running
+  echo -e "\nError: $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $ERROR_LOG
+  echo " - ${0##*/} already running" | BUSYBOX tee -a $ERROR_LOG
+  echo "     (PID: $PID)" | BUSYBOX tee -a $ERROR_LOG
+  exit 1
+fi
+
+GAFT_HOTPLUG() {
+  STATUS=0
+  echo "hotplug" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+  echo "90" > /sys/devices/system/cpu/cpufreq/hotplug/up_threshold
+  echo "95" > /sys/devices/system/cpu/cpufreq/hotplug/cpu_up_threshold
+  echo "10" > /sys/devices/system/cpu/cpufreq/hotplug/down_differential
+  echo "5" > /sys/devices/system/cpu/cpufreq/hotplug/cpu_down_differential
+  sleep $SLEEP_TIME
+  while :; do
+    # Check screen state
+    GAFT_SCR=$(dumpsys power | grep mScreenOn= | grep -oE '(true|false)')
+    if [ $GAFT_SCR == false ] && [ $STATUS -ne 0 ]; then      # Screen Off
+      STATUS=0
+      echo "598000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+      echo "2" > /sys/devices/system/cpu/cpufreq/hotplug/cpu_num_limit
+      echo "100" > /sys/devices/system/cpu/cpufreq/hotplug/powersave_bias
+      echo "60000" > /sys/devices/system/cpu/cpufreq/hotplug/sampling_rate
+      echo "Activated: Screen Off Profile (Max: 598000)" | BUSYBOX tee -a $LOG_FILE
+      echo "     $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $LOG_FILE
+      cat /sys/power/wait_for_fb_wake     # Lock here until screen is on
+    elif [ $GAFT_SCR == true ] && [ $STATUS -ge 0 ]; then     # Screen On
+      BATTLVL=`cat /sys/class/power_supply/battery/capacity`
+      if [ $STATUS -eq 0 ]; then
+        echo "4" > /sys/devices/system/cpu/cpufreq/hotplug/cpu_num_limit
+        echo "45000" > /sys/devices/system/cpu/cpufreq/hotplug/sampling_rate
+      fi
+      if [ $BATTLVL -gt 0 ] && [ $BATTLVL -le 30 ] && [ $STATUS -ne 30 ]; then
+        # Battery level 1-30
+        STATUS=30
+        echo "1040000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+        echo "50" > /sys/devices/system/cpu/cpufreq/hotplug/powersave_bias
+        echo "Activated: 1-30% Profile (Max: 1040000)" | BUSYBOX tee -a $LOG_FILE
+        echo "     $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $LOG_FILE
+      elif [ $BATTLVL -gt 30 ] && [ $BATTLVL -le 100 ] && [ $STATUS -ne 100 ]; then
+        # Battery level 31-100
+        STATUS=100
+        echo "1300000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+        echo "0" > /sys/devices/system/cpu/cpufreq/hotplug/powersave_bias
+        echo "Activated: Default Profile (Max: 1300000)" | BUSYBOX tee -a $LOG_FILE
+        echo "     $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $LOG_FILE
+      fi
+      sleep $CHECK_TIME     # Wait a little longer
+    fi
+  done
+}
+
+[ -e $LOG_FILE ] && rm $LOG_FILE     # Remove existing log
+
+echo "GAFT's System Charger" | BUSYBOX tee -a $LOG_FILE
+echo -e "\nStarted: $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $LOG_FILE
+
+if [ `grep ENTROPY_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+  # If entropy generator is enabled
+  echo " - Check for entropy generators" | BUSYBOX tee -a $LOG_FILE
+  for ENT in haveged qrngd; do
+    if [ `BUSYBOX pgrep $ENT >&-` ] || [ -e /system/bin/$ENT ] || [ -e /system/xbin/$ENT ]; then
+      # Add to found list
+      ENT_CHECK="$ENT_CHECK $ENT"
+    fi
+  done
+  if [ -z $ENT_CHECK ]; then
+    # If no conflicting entropy generator found
+    if [ ! `BUSYBOX pidof rngd` ]; then
+      $GAFT/bin/rngd -P -s 256 -t 2 -W 25
+      echo "     Initialized: Seeder" | BUSYBOX tee -a $LOG_FILE
+    else echo "     Skipped: rngd is already running" | BUSYBOX tee -a $LOG_FILE
+    fi
+  else echo "     Found: $ENT_CHECK" | BUSYBOX tee -a $LOG_FILE
+  fi
+else
+  echo " - Entropy generator disabled" | BUSYBOX tee -a $LOG_FILE
+  echo "     Info: Enable at console (GAFT)" | BUSYBOX tee -a $LOG_FILE
+fi
+if [ `grep HOTPLUG_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+  # If hotplug profiler is enabled
+  echo " - Check for overclockers" | BUSYBOX tee -a $LOG_FILE
+  for NAME in overclock quickclock; do
+    OVERCLOCKER=`BUSYBOX pgrep -l $NAME | BUSYBOX awk '{print $2}' | grep -v /`
+    if [ "$OVERCLOCKER" ] && [ ! "`echo $OC_CHECK | grep $OVERCLOCKER`" ]; then
+      # Add to found list
+      OC_CHECK="$OC_CHECK $OVERCLOCKER"
+    fi
+  done
+  if [ -z $OC_CHECK ]; then
+    # If no conflicting overclockers found
+    GAFT_HOTPLUG &     # Run in background
+    echo "     Initialized: Hotplug profiler" | BUSYBOX tee -a $LOG_FILE
+  else echo "     Found: $OC_CHECK" | BUSYBOX tee -a $LOG_FILE
+  fi
+else
+  echo " - Hotplug profiler disabled" | BUSYBOX tee -a $LOG_FILE
+  echo "     Info: Enable at console (GAFT)" | BUSYBOX tee -a $LOG_FILE
+fi
+
+echo -e "Finished: $( date +"%m-%d-%Y %H:%M:%S" )\n" | BUSYBOX tee -a $LOG_FILE

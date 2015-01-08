@@ -1,0 +1,64 @@
+#!/system/bin/sh
+
+#      ,#####    ###    ,#############
+#     ###  `##  ## ##   ###      ##
+#    ,##       ##   ##  ######   ##
+#    ### ##### ######## #####'  ,##
+#    ###   ######   `#####      ###
+#    `#########'      ####     ####
+#
+# | kermage | PrivaTech -- GAFT | iMUT |
+# Copyright 2014 Gene Alyson F. Torcende
+# Email: genealyson.torcende@gmail.com
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# All rights reserved.
+
+
+ui_print("");
+ui_print(" ######################################## ");
+ui_print("#                                        #");
+ui_print("#        GAFT Scripts 1.00.101214        #");
+ui_print("# | kermage | PrivaTech -- GAFT | iMUT | #");
+ui_print("# Copyright 2014 Gene Alyson F. Torcende #");
+ui_print("#  Email: genealyson.torcende@gmail.com  #");
+ui_print("#                                        #");
+ui_print(" ######################################## ");
+ui_print("");
+
+package_extract_dir("setup", "/tmp");
+set_perm_recursive(0, 0, 0777, 0777, "/tmp");
+
+ui_print(" > Mounting Filesystems . . .");
+run_program("/tmp/busybox", "mount", "/system");
+run_program("/tmp/busybox", "mount", "-o", "remount,rw", "/system");
+run_program("/tmp/busybox", "mount", "/data");
+run_program("/tmp/busybox", "mount", "-o", "remount,rw", "/data");
+
+ui_print(" > Installing GAFT . . .");
+run_program("/tmp/Installer.sh");
+
+ui_print(" > Unmounting Filesystems . . .");
+run_program("/tmp/busybox", "unmount", "/system");
+run_program("/tmp/busybox", "unmount", "/data");
+
+ui_print("");
+ui_print(" ######################################## ");
+ui_print("#                                        #");
+ui_print("#          FLASHED AT OWN RISK!          #");
+ui_print("#      Absolutely no guarantees. :P      #");
+ui_print("#       Reboot your device now ...       #");
+ui_print("#                                        #");
+ui_print(" ######################################## ");
+ui_print("");

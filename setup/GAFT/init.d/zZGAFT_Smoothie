@@ -1,0 +1,118 @@
+#!/system/bin/sh
+
+#      ,#####    ###    ,#############
+#     ###  `##  ## ##   ###      ##
+#    ,##       ##   ##  ######   ##
+#    ### ##### ######## #####'  ,##
+#    ###   ######   `#####      ###
+#    `#########'      ####     ####
+#
+# | kermage | PrivaTech -- GAFT | iMUT |
+# Copyright 2014 Gene Alyson F. Torcende
+# Email: genealyson.torcende@gmail.com
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# All rights reserved.
+
+# The script includes:
+#   - GAFT's System Smoothie (Inspired by LoopySmoothness of Ipy @XDA)
+#   --- Automatically checks for available launchers and inputmethods.
+#   --- Continually renice all defined processes with its nice level,
+#       especially after it's removed from the memory which resets their priority.
+
+
+###    DO NOT CHANGE anything below    ###
+### unless you know what you are doing ###
+GAFT=/data/GAFT
+alias BUSYBOX='$GAFT/bin/busybox'     # Use included busybox
+LOG_FILE=$GAFT/logs/Smoothie.log      # Log location
+SLEEP_TIME=3
+# Check time in seconds; used at launcher check and smoothie check.
+# A minute should be more than enough to wait for launchers at boot,
+# and to recheck all defined process with its current nice level.
+CHECK_TIME=60
+
+# Script PID Check
+PID=`BUSYBOX ps | grep ${0##*/} | grep -v grep | grep -v $$ | BUSYBOX awk '{print $1}'`
+if [ ! -z $PID ]; then
+  # If script PID is present, still running
+  echo -e "\nError: $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $ERROR_LOG
+  echo " - ${0##*/} already running" | BUSYBOX tee -a $ERROR_LOG
+  echo "     (PID: $PID)" | BUSYBOX tee -a $ERROR_LOG
+  exit 1
+fi
+
+GAFT_SMOOTHIE() {
+  sleep $SLEEP_TIME
+  while :; do
+    # Check screen state
+    GAFT_SCR=$(dumpsys power | grep mScreenOn= | grep -oE '(true|false)')
+    if [ $GAFT_SCR == false ]; then       # Screen Off
+      cat /sys/power/wait_for_fb_wake     # Lock here until screen is on
+    elif [ $GAFT_SCR == true ]; then      # Screen On
+      for ITEM in $LIST; do     # For every item in list
+        PNAME=${ITEM%=*}; NICEL=${ITEM#*=};
+        if [ `BUSYBOX pidof $PNAME` ]; then     # If process exist
+          if [ "`ps -p | grep $PNAME\$ | BUSYBOX awk '{print $7}'`" -ne "$NICEL" ]; then
+            # If nicelevel is not equal to prefered value 
+            BUSYBOX renice $NICEL `BUSYBOX pidof $PNAME`
+            echo "Reniced $NICEL: $PNAME" | BUSYBOX tee -a $LOG_FILE
+            echo "     $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $LOG_FILE
+          fi
+        fi
+      done
+    fi
+    sleep $CHECK_TIME     # Wait a little longer
+  done
+}
+
+[ -e $LOG_FILE ] && rm $LOG_FILE      # Remove existing log
+
+echo "GAFT's System Smoothie" | BUSYBOX tee -a $LOG_FILE
+echo -e "\nStarted: $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $LOG_FILE
+
+if [ `grep SMOOTHIE_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+  # If smoothie is enabled
+  echo " - Check for kswapd0" | BUSYBOX tee -a $LOG_FILE
+  sleep $SLEEP_TIME
+  if [ `BUSYBOX pidof kswapd0` ] && [ -z $SWAP_CHECK ]; then
+    SWAP_CHECK=ok
+    BUSYBOX renice 19 `BUSYBOX pidof kswapd0`
+    echo "     Reniced: kswapd0" | BUSYBOX tee -a $LOG_FILE
+  fi
+  echo " - Check for launchers and inputmethods" | BUSYBOX tee -a $LOG_FILE
+  sleep $CHECK_TIME     # Wait a little longer
+  for NAME in home launcher inputmethod; do
+    LAUNCHINPUT=`BUSYBOX pgrep -l $NAME | BUSYBOX awk '{print $2}' | grep -v /`
+    if [ "$LAUNCHINPUT" ] && [ ! "`echo $LI_CHECK | grep $LAUNCHINPUT`" ]; then
+      # Add to found list
+      LI_CHECK="$LI_CHECK $LAUNCHINPUT"
+    fi
+  done
+  echo "     Found: $LI_CHECK" | BUSYBOX tee -a $LOG_FILE
+  for LAUNCHINPUT in $LI_CHECK; do     # For every item in LIST
+    LAUNCHINPUT="$LAUNCHINPUT=-20"     # Add nice level
+    LI_LIST="$LI_LIST $LAUNCHINPUT"
+  done
+  echo " - Check smoothie process list" | BUSYBOX tee -a $LOG_FILE
+  SP_LIST=`BUSYBOX sed -n '/# START #/,/# END #/p' $GAFT/Settings | BUSYBOX head -n-1 | BUSYBOX tail -n+2`
+  LIST="$SP_LIST $LI_LIST"     # Add found launchers and inputmethods to smoothie list
+  GAFT_SMOOTHIE &     # Run in background
+  echo "     Initialized: System smoothie" | BUSYBOX tee -a $LOG_FILE
+else
+  echo " - System smoothie disabled" | BUSYBOX tee -a $LOG_FILE
+  echo "     Info: Enable at console (GAFT)" | BUSYBOX tee -a $LOG_FILE
+fi
+
+echo -e "Finished: $( date +"%m-%d-%Y %H:%M:%S" )\n" | BUSYBOX tee -a $LOG_FILE

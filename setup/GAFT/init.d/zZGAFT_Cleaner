@@ -1,0 +1,131 @@
+#!/system/bin/sh
+
+#      ,#####    ###    ,#############
+#     ###  `##  ## ##   ###      ##
+#    ,##       ##   ##  ######   ##
+#    ### ##### ######## #####'  ,##
+#    ###   ######   `#####      ###
+#    `#########'      ####     ####
+#
+# | kermage | PrivaTech -- GAFT | iMUT |
+# Copyright 2014 Gene Alyson F. Torcende
+# Email: genealyson.torcende@gmail.com
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# All rights reserved.
+
+# The script includes:
+# - Data junks cleaner
+# --- Cleans most of data junks.
+# - Battery calibrator
+# --- Runs every 3days if battery is max level.
+# - Obsolete dalvik-cache remover
+# --- Scans for unused *.dex every 3days.
+
+
+### Editable variables, modify to your liking ###
+# Time in seconds; 1day=24hours=1440mins=86400secs
+RUN_EVERY=259200     # Defined: 3days=259200secs
+
+
+###    DO NOT CHANGE anything below    ###
+### unless you know what you are doing ###
+GAFT=/data/GAFT
+alias BUSYBOX='$GAFT/bin/busybox'     # Use included busybox
+LOG_FILE=$GAFT/logs/Cleaner.log       # Log location
+LASTRUN=0`BUSYBOX stat -t $LOG_FILE | BUSYBOX awk '{print $14}'` 2>&-
+INTERVAL=$(BUSYBOX expr `date +%s` - $LASTRUN)
+
+GAFT_CLEAN() {
+  # $1: What to clean
+  if [ "$(ls $1 2>&-)" ]; then
+    rm -f $1 2>&-     # Remove if exist
+    echo "     Cleaned: $1" | BUSYBOX tee -a $LOG_FILE
+  else echo "     Skipped: $1" | BUSYBOX tee -a $LOG_FILE
+  fi
+}
+
+[ -e $LOG_FILE ] && rm $LOG_FILE     # Remove existing log
+
+echo "GAFT's Smart Cleaner" | BUSYBOX tee -a $LOG_FILE
+echo -e "\nStarted: $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $LOG_FILE
+
+echo " - Check for junks" | BUSYBOX tee -a $LOG_FILE
+GAFT_CLEAN "/cache/*.*"
+GAFT_CLEAN "/cache/recovery/*.*"
+GAFT_CLEAN "/data/*.log"
+GAFT_CLEAN "/data/*.txt"
+GAFT_CLEAN "/data/anr/*.*"
+GAFT_CLEAN "/data/backup/pending/*.tmp"
+GAFT_CLEAN "/data/local/*.*"
+GAFT_CLEAN "/data/local/tmp/*.*"
+GAFT_CLEAN "/data/system/dropbox/*"
+GAFT_CLEAN "/data/system/usagestats/*"
+GAFT_CLEAN "/data/tombstones/*"
+GAFT_CLEAN "/storage/sdcard0/LOST.DIR/*"
+GAFT_CLEAN "/storage/sdcard1/LOST.DIR/*"
+
+if [ $INTERVAL -gt $RUN_EVERY ]; then
+  echo " - Check for battery calibration" | BUSYBOX tee -a $LOG_FILE
+  if [ $(cat /sys/class/power_supply/battery/capacity) -eq 100 ]; then     # Max Level
+    rm -f /data/system/batterystats.bin
+    echo "     Battery Calibrated" | BUSYBOX tee -a $LOG_FILE
+  else echo "     Skipped: Not fully charged" | BUSYBOX tee -a $LOG_FILE
+  fi
+  echo " - Scan unused dex files" | BUSYBOX tee -a $LOG_FILE
+  for DIR in /cache/dalvik-cache /data/dalvik-cache /storage/sdcard0/dalvik-cache /storage/sdcard1/dalvik-cache; do
+    if [ ! -d $DIR ] || [ ! "$(ls $DIR/*.dex 2>&-)" ]; then
+      continue     # Skip if directory does not contain dex file
+    fi
+    cd $DIR
+    if [ "$(ls data@app@*.dex 2>&-)" ]; then     # If directory contains data@app@*.dex
+      for DEX in data@app@*.dex; do     # Lists /data/app dex files
+        APK=`echo "$DEX" | BUSYBOX sed "s/data@app@//g" | BUSYBOX sed "s/@classes.*//g"`
+        if [ ! -e "/data/app/$APK" ]; then
+          echo "     Obsolete: $DIR/$DEX" | BUSYBOX tee -a $LOG_FILE
+          rm -f $DEX 2>&-     # Remove if its APK is not found in /data/app
+        fi
+      done
+    fi
+    if [ "$(ls system@app@*.dex 2>&-)" ]; then
+      for DEX in system@app@*.dex; do
+        APK=`echo "$DEX" | BUSYBOX sed "s/system@app@//g" | BUSYBOX sed "s/@classes.*//g"`
+        if [ ! -e "/system/app/$APK" ]; then
+          echo "     Obsolete: $DIR/$DEX" | BUSYBOX tee -a $LOG_FILE
+          rm -f $DEX 2>&-
+        fi
+      done
+    fi
+    if [ "$(ls system@framework@*.dex 2>&-)" ]; then
+      for DEX in system@framework@*.dex; do
+        APK=`echo "$DEX" | BUSYBOX sed "s/system@framework@//g" | BUSYBOX sed "s/@classes.*//g"`
+        if [ ! -e "/system/framework/$APK" ]; then
+          echo "     Obsolete: $DIR/$DEX" | BUSYBOX tee -a $LOG_FILE
+          rm -f $DEX 2>&-
+        fi
+      done
+    fi
+    if [ "$(ls system@priv-app@*.dex 2>&-)" ]; then
+      for DEX in system@priv-app@*.dex; do
+        APK=`echo "$DEX" | BUSYBOX sed "s/system@priv-app@//g" | BUSYBOX sed "s/@classes.*//g"`
+        if [ ! -e "/system/priv-app/$APK" ]; then
+          echo "     Obsolete: $DIR/$DEX" | BUSYBOX tee -a $LOG_FILE
+          rm -f $DEX 2>&-
+        fi
+      done
+    fi
+  done
+fi
+
+echo -e "Finished: $( date +"%m-%d-%Y %H:%M:%S" )\n" | BUSYBOX tee -a $LOG_FILE

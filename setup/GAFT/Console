@@ -1,0 +1,266 @@
+#!/system/bin/sh
+
+#      ,#####    ###    ,#############
+#     ###  `##  ## ##   ###      ##
+#    ,##       ##   ##  ######   ##
+#    ### ##### ######## #####'  ,##
+#    ###   ######   `#####      ###
+#    `#########'      ####     ####
+#
+# | kermage | PrivaTech -- GAFT | iMUT |
+# Copyright 2014 Gene Alyson F. Torcende
+# Email: genealyson.torcende@gmail.com
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# All rights reserved.
+
+# The script includes:
+# - GAFT's init.d Console
+# --- Colorful UI to control and monitor scripts, and uninstall.
+
+
+###    DO NOT CHANGE anything below    ###
+### unless you know what you are doing ###
+GAFT=/data/GAFT
+alias BUSYBOX='$GAFT/bin/busybox'     # Use included busybox
+SLEEP_TIME=3
+
+# Root Check
+uid=`id -u` && uid=${uid%%\(*}
+if [ "$uid" -ne "uid=0" ]; then
+  # If not run as root
+  echo -e "\nError: $( date +"%m-%d-%Y %H:%M:%S" )"
+  echo " - ${0##*/} must be run as root"
+  exit 1
+fi
+# Version Check
+VERSION=`grep VERSION $GAFT/Settings | BUSYBOX sed 's/.*=//'`
+# Check to use required binaries according to API level
+API=$(getprop ro.build.version.sdk)
+[ $API -gt "19" ] && API=19
+[ $API -lt "19" ] && API=18
+
+GAFT_MENU () {
+  clear
+  echo ""
+  echo -e "\e[1;34m  ######################################## \e[0m"
+  echo -e "\e[1;34m #                                        #\e[0m"
+  echo -e "\e[1;34m #        \e[1;31mGAFT Scripts \e[1;36m$VERSION\e[1;34m        #\e[0m"
+  echo -e "\e[1;34m # \e[1;37m| kermage | PrivaTech -- GAFT | iMUT |\e[1;34m #\e[0m"
+  echo -e "\e[1;34m # \e[1;37mCopyright 2014 Gene Alyson F. Torcende\e[1;34m #\e[0m"
+  echo -e "\e[1;34m #  \e[1;37mEmail: \e[4;32mgenealyson.torcende@gmail.com\e[0m\e[1;34m  #\e[0m"
+  echo -e "\e[1;34m #                                        #\e[0m"
+  echo -e "\e[1;34m  ######################################## \e[0m"
+  echo ""
+  echo -e "\e[1;35m    1)\e[0m Entropy [$ENT]"
+  echo -e "\e[1;35m    2)\e[0m Hotplug [$HP]"
+  echo -e "\e[1;35m    3)\e[0m Smoothie [$SS]"
+  echo -e "\e[1;35m    4)\e[0m SQLite Database"
+  echo -e "\e[1;35m    5)\e[0m Zipalign APKs"
+  echo -e "\e[1;35m    6)\e[0m Fix Button Issues"
+  echo -e "\e[1;35m    7)\e[0m Reset Data Usage"
+  echo -e "\e[1;35m    u)\e[0m Uninstall GAFT"
+  echo -e "\e[1;35m    x)\e[0m Exit"
+  echo ""
+}
+
+while :; do
+  if [ `grep ENTROPY_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+    ENT="\e[1;32mEnabled\e[0m"
+  else ENT="\e[1;31mDisabled\e[0m"
+  fi
+  if [ `grep HOTPLUG_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+    HP="\e[1;32mEnabled\e[0m"
+  else HP="\e[1;31mDisabled\e[0m"
+  fi
+  if [ `grep SMOOTHIE_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+    SS="\e[1;32mEnabled\e[0m"
+  else SS="\e[1;31mDisabled\e[0m"
+  fi
+  GAFT_MENU
+  echo -ne "\e[1;33m  Choose an Option: \e[0m"
+  read INPUT
+  case $INPUT in
+    1)
+      if [ `grep ENTROPY_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+        echo -ne "\n   Deactivating entropy generator . . ."
+        BUSYBOX sed -i '/^ENTROPY_SWITCH/s/=.*/='0'/' $GAFT/Settings
+        if [ `BUSYBOX pidof rngd` ]; then
+          BUSYBOX pkill -9 rngd
+          sleep $SLEEP_TIME
+          rm -f /data/rngd.pid
+        fi
+      else
+        echo -ne "\n   Activating entropy generator . . ."
+        BUSYBOX sed -i '/^ENTROPY_SWITCH/s/=.*/='1'/' $GAFT/Settings
+        $GAFT/bin/rngd -P -s 256 -t 2 -W 25
+        sleep $SLEEP_TIME
+      fi;;
+    2)
+      if [ `grep HOTPLUG_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+        echo -ne "\n   Deactivating hotplug profiler . . ."
+        BUSYBOX sed -i '/^HOTPLUG_SWITCH/s/=.*/='0'/' $GAFT/Settings
+        PID=`BUSYBOX ps | grep zZGAFT_Charger | grep -v grep | grep -v $$ | BUSYBOX awk '{print $1}'`
+        if [ ! -z $PID ]; then
+          kill -9 $PID
+          sleep $SLEEP_TIME
+        fi
+      else
+        echo -ne "\n   Activating hotplug profiler . . ."
+        BUSYBOX sed -i '/^HOTPLUG_SWITCH/s/=.*/='1'/' $GAFT/Settings
+        $GAFT/init.d/zZGAFT_Charger 2>/dev/null1>/dev/null &
+        sleep $SLEEP_TIME
+      fi;;
+    3)
+      if [ `grep SMOOTHIE_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+        echo -ne "\n   Deactivating system smoothie . . ."
+        BUSYBOX sed -i '/^SMOOTHIE_SWITCH/s/=.*/='0'/' $GAFT/Settings
+        PID=`BUSYBOX ps | grep zZGAFT_Smoothie | grep -v grep | grep -v $$ | BUSYBOX awk '{print $1}'`
+        if [ ! -z $PID ]; then
+          kill -9 $PID
+          sleep $SLEEP_TIME
+        fi
+      else
+        echo -ne "\n   Activating system smoothie . . ."
+        BUSYBOX sed -i '/^SMOOTHIE_SWITCH/s/=.*/='1'/' $GAFT/Settings
+        $GAFT/init.d/zZGAFT_Smoothie 2>/dev/null1>/dev/null &
+        sleep $SLEEP_TIME
+      fi;;
+    4)
+      clear
+      echo " - SQLite Database"
+      DATA=`BUSYBOX find /data -iname "*.db"` 2>&-
+      SDCA=`BUSYBOX find /storage -iname "*.db"` 2>&-
+      for DB in $DATA $SDCA; do     # For every device in /data and /storage
+        $GAFT/bin/sqlite3$API $DB VACUUM 2>&-;      # Optimize using vacuum
+        if [ $? -ne 0 ]; then                   # Error, something wrong
+          echo "     VError $?: $DB"
+          continue
+        fi
+        $GAFT/bin/sqlite3$API $DB REINDEX 2>&-;     # Optimize using reindex
+        if [ $? -ne 0 ]; then                   # Error, something wrong
+          echo "     RError $?: $DB"
+          continue
+        fi
+        echo "     Optimized: $DB"
+      done
+      echo -ne "\n   Press any key to continue . . ."; read KEY;;
+    5)
+      clear
+      echo " - Zipalign APKs"
+      for DIR in /preload/app /system/app /system/priv-app /data/app; do
+        if [ ! -d $DIR ] || [ ! "$(ls $DIR/*.apk 2>&-)" ]; then
+          continue     # Skip if directory does not contain APK file
+        fi
+        for APK in $DIR/*.apk; do
+          $GAFT/bin/zipalign$API -c 4 $APK 2>&-
+          if [ $? -eq 1 ]; then     # If not yet zipaligned
+            $GAFT/bin/zipalign$API -f 4 $APK /cache/$APK 2>&-
+            cp -f -p /cache/$APK $APK 2>&-
+            rm -f /cache/$APK 2>&-
+            echo "     Aligned: $APK"
+          else echo "     Skipped: $APK"
+          fi
+        done
+      done
+      echo -ne "\n   Press any key to continue . . ."; read KEY;;
+    6)
+      echo -ne "\n   Fixing button issues . . ."
+      DB=/data/data/com.android.providers.settings/databases/settings.db
+      $GAFT/bin/sqlite3$API $DB "insert into global (name, value) values ('device_provisioned', 1 )";
+      echo -ne "\n   Please reboot to complete . . ."; sleep $SLEEP_TIME;;
+    7)
+      echo -ne "\n   Resetting data usage . . ."
+      if [ "$(ls /data/system/netstats/* 2>&-)" ]; then
+        rm -f /data/system/netstats/*
+      fi
+      echo -ne "\n   Please reboot to complete . . ."; sleep $SLEEP_TIME;;
+    u)
+      clear
+      # Check default /system mount
+      DEFMNT=`mount | grep /system | BUSYBOX awk '{print $4}' | BUSYBOX cut -d ',' -f1`
+      # If read-only, remount /system to read&write first
+      [ $DEFMNT == "ro" ] && BUSYBOX mount -o remount,rw /system
+      echo " - Uninstalling GAFT Scripts"
+      if [ `grep ENTROPY_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+        if [ `BUSYBOX pidof rngd` ]; then
+          BUSYBOX pkill -9 rngd
+          sleep $SLEEP_TIME
+          rm -f /data/rngd.pid
+          echo "     Deactivated: Entropy generator"
+        fi
+      fi
+      if [ `grep HOTPLUG_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+        PID=`BUSYBOX ps | grep zZGAFT_Charger | grep -v grep | grep -v $$ | BUSYBOX awk '{print $1}'`
+        if [ ! -z $PID ]; then
+          kill -9 $PID
+          sleep $SLEEP_TIME
+          echo "     Deactivated: Hotplug profiler"
+        fi
+      fi
+      if [ `grep SMOOTHIE_SWITCH $GAFT/Settings | BUSYBOX sed 's/.*=//'` -eq "1" ]; then
+        PID=`BUSYBOX ps | grep zZGAFT_Smoothie | grep -v grep | grep -v $$ | BUSYBOX awk '{print $1}'`
+        if [ ! -z $PID ]; then
+          kill -9 $PID
+          sleep $SLEEP_TIME
+          echo "     Deactivated: System smoothie"
+        fi
+      fi
+      if [ -d $GAFT ]; then
+        LIST=`BUSYBOX find $GAFT -type f | BUSYBOX sort`
+        for FILE in $LIST; do         # For every file in LIST
+          # Skip busybox, remove later
+          [ $(BUSYBOX basename "$FILE") == "busybox" ] && continue
+          rm -f $FILE
+          echo "     Removed: $FILE"
+        done
+      fi
+      if [ "$(ls /etc/init.d/*GAFT_* 2>&-)" ]; then
+        LIST=`BUSYBOX find /etc/init.d/*GAFT_* -type f | BUSYBOX sort`
+        for FILE in $LIST; do         # For every file in LIST
+          rm -f $FILE
+          echo "     Removed: $FILE"
+        done
+      fi
+      if [ -L /system/xbin/GAFT ]; then
+        rm -f /system/xbin/GAFT
+        echo "     Removed: /system/xbin/GAFT"
+      fi
+      echo " - Restoring backups"
+      if [ -e /system/etc/init.d.GAFT ]; then     # If backup exist
+        LIST=`BUSYBOX find /system/etc/init.d.GAFT -mindepth 1 -maxdepth 1 -type f | BUSYBOX sort`
+        for SCRIPT in $LIST; do         # For every script in LIST
+            mv $SCRIPT /system/etc/init.d         # Restore file
+            chmod 777 /system/etc/init.d/$(BUSYBOX basename "$SCRIPT")
+            echo "     Restored: /system/etc/init.d/$(BUSYBOX basename "$SCRIPT")"
+        done
+        rm -fr /system/etc/init.d.GAFT     # Remove old backup
+      fi
+      if [ -e /system/build.prop.GAFT ]; then
+        mv /system/build.prop.GAFT /system/build.prop
+        chmod 644 /system/build.prop
+        echo "     Restored: /system/build.prop"
+      fi
+      if [ -e /system/etc/install-recovery.sh.GAFT ]; then
+        rm -f /system/etc/install-recovery.sh.GAFT     # Remove old backup
+      fi
+      rm -fr $GAFT     # Clean GAFT working dir
+      # If default is read-only, remount /system back to default
+      [ $DEFMNT == "ro" ] && mount -o remount,ro /system
+      echo -e "\n   Please reboot to complete . . ."; sleep 5; exit;;
+    x) echo -e "\n   Exiting GAFT's init.d Console . . ."; sleep $SLEEP_TIME; clear; exit;;
+  esac
+done
+  
+  

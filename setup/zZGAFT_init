@@ -1,0 +1,78 @@
+#!/system/bin/sh
+
+#      ,#####    ###    ,#############
+#     ###  `##  ## ##   ###      ##
+#    ,##       ##   ##  ######   ##
+#    ### ##### ######## #####'  ,##
+#    ###   ######   `#####      ###
+#    `#########'      ####     ####
+#
+# | kermage | PrivaTech -- GAFT | iMUT |
+# Copyright 2014 Gene Alyson F. Torcende
+# Email: genealyson.torcende@gmail.com
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# All rights reserved.
+
+# The script includes:
+# - GAFT's init.d Launcher
+# --- Ensures no redundant execution of GAFT scripts at boot.
+# --- Execute scripts in background to minimize boot time.
+
+
+###    DO NOT CHANGE anything below    ###
+### unless you know what you are doing ###
+GAFT=/data/GAFT
+alias BUSYBOX='$GAFT/bin/busybox'     # Use included busybox
+LOG_FILE=$GAFT/logs/init.d.log        # Log location
+ERROR_LOG=$GAFT/logs/Error.log        # Error Log
+LASTRUN=0`BUSYBOX stat -t $LOG_FILE | BUSYBOX awk '{print $14}'` 2>&-
+INTERVAL=$(BUSYBOX expr `date +%s` - $LASTRUN)
+# Lock time in seconds; ensures no redundant execution of scripts at boot.
+# A minute should be more than enough between reboots or other init.d callers.
+LOCK_TIME=60
+
+# Script PID Check
+PID=`BUSYBOX ps | grep ${0##*/} | grep -v grep | grep -v $$ | BUSYBOX awk '{print $1}'`
+if [ ! -z $PID ]; then
+  # If script PID is present, still running
+  echo -e "\nError: $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $ERROR_LOG
+  echo " - ${0##*/} already running" | BUSYBOX tee -a $ERROR_LOG
+  echo "     (PID: $PID)" | BUSYBOX tee -a $ERROR_LOG
+  exit 1
+fi
+# Script Lock
+if [ $INTERVAL -lt $LOCK_TIME ]; then
+  # If executed less than the defined lock time
+  echo -e "\nError: $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $ERROR_LOG
+  echo " - ${0##*/} already executed" | BUSYBOX tee -a $ERROR_LOG
+  echo "     ($INTERVAL sec ago)" | BUSYBOX tee -a $ERROR_LOG
+  exit 1  
+fi
+
+[ -e $LOG_FILE ] && rm $LOG_FILE     # Remove existing log
+
+echo "GAFT's init.d Launcher" | BUSYBOX tee -a $LOG_FILE
+echo -e "\nStarted: $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $LOG_FILE
+
+echo " - Check for $GAFT/init.d scripts" | BUSYBOX tee -a $LOG_FILE
+LIST=`BUSYBOX find $GAFT/init.d -mindepth 1 -maxdepth 1 -type f | BUSYBOX sort`
+for SCRIPT in $LIST; do         # For every script in LIST
+  if [ -x "$SCRIPT" ]; then     # Check if file is executable
+    "$SCRIPT" &                 # Run in background
+    echo "     Executed: $(BUSYBOX basename "$SCRIPT")" | BUSYBOX tee -a $LOG_FILE
+  fi
+done
+
+echo -e "Finished: $( date +"%m-%d-%Y %H:%M:%S" )\n" | BUSYBOX tee -a $LOG_FILE

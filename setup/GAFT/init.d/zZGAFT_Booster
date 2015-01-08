@@ -1,0 +1,206 @@
+#!/system/bin/sh
+
+#      ,#####    ###    ,#############
+#     ###  `##  ## ##   ###      ##
+#    ,##       ##   ##  ######   ##
+#    ### ##### ######## #####'  ,##
+#    ###   ######   `#####      ###
+#    `#########'      ####     ####
+#
+# | kermage | PrivaTech -- GAFT | iMUT |
+# Copyright 2014 Gene Alyson F. Torcende
+# Email: genealyson.torcende@gmail.com
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# All rights reserved.
+
+# The script includes:
+# - GAFT's System Tweaker
+# --- Only tweaks the system setting if it is available
+#     and is not yet set to the preferred value.
+# - GAFT's DB Setter
+# --- Creates the settings.db entry if not yet existed
+#     and only update the value if not yet tweaked.
+# - Optimized mount options, proc/sys, read_ahead, and LMK values
+# --- Aims for a smoother UI, better battery and memory management,
+#     faster read and write speeds, and COOLER system. //feel it! ^_^
+# - Wi-Fi idle time before sleep (Inspired by kobridge @XDA)
+# --- Wait 10mins before Wi-Fi sleeps. //after the screen is turned off
+
+
+### Editable variables, modify to your liking ###
+# Read-ahead value
+READ_AHEAD=2048     # Default: 128
+# Wait time in milliseconds; 1min=60sec=60000msec
+WIFI_WAIT=600000    # Defined: 10mins=600000msec
+
+
+###    DO NOT CHANGE anything below    ###
+### unless you know what you are doing ###
+GAFT=/data/GAFT
+alias BUSYBOX='$GAFT/bin/busybox'     # Use included busybox
+LOG_FILE=$GAFT/logs/Booster.log       # Log location
+
+# Check to use required binaries according to API level
+API=$(getprop ro.build.version.sdk)
+[ $API -gt "19" ] && API=19
+[ $API -lt "19" ] && API=18
+
+GAFT_TWEAK() {
+  # $1: What to tweak     $2: Value
+  if [ -e $1 ]; then     # If available
+    if [ "`cat $1`" = "$2" ]; then     # Tweak okay
+      echo "     Skipped: $1=$2" | BUSYBOX tee -a $LOG_FILE
+    else
+      # If not set to the preferred value
+      echo "$2" > $1
+      echo "     Tweaked: $1=$2" | BUSYBOX tee -a $LOG_FILE
+    fi
+  else echo "     Unavailable: $1" | BUSYBOX tee -a $LOG_FILE     # Skip
+  fi
+}
+GAFT_DBSET() {
+  # $1: Where     $2: Name     $3: Value
+  DB=/data/data/com.android.providers.settings/databases/settings.db
+  VAL=`$GAFT/bin/sqlite3$API $DB "select value from $1 where name='$2'";`
+  if [ -z $VAL ]; then
+    # If entry not existed
+    $GAFT/bin/sqlite3$API $DB "insert into $1 (name, value) values ('$2', $3 )";
+    echo "     Added: $1 $2=$3" | BUSYBOX tee -a $LOG_FILE
+  else     # If entry exist
+    if [ $VAL = $3 ]; then     # Entry okay
+      echo "     Skipped: $1 $2=$3" | BUSYBOX tee -a $LOG_FILE
+    else
+      # If entry not yet tweaked
+      $GAFT/bin/sqlite3$API $DB "update $1 set value=$3 where name='$2'";
+      echo "     Updated: $1 $2=$3" | BUSYBOX tee -a $LOG_FILE
+    fi
+  fi
+}
+
+[ -e $LOG_FILE ] && rm $LOG_FILE      # Remove existing log
+
+echo "GAFT's System Booster" | BUSYBOX tee -a $LOG_FILE
+echo -e "\nStarted: $( date +"%m-%d-%Y %H:%M:%S" )" | BUSYBOX tee -a $LOG_FILE
+
+sync
+echo " - Partition Mounts" | BUSYBOX tee -a $LOG_FILE
+for i in $(BUSYBOX mount | grep relatime | BUSYBOX cut -d " " -f3); do
+  BUSYBOX mount -o remount,noatime $i
+done
+echo "     Remounted: Noatime for all partitions" | BUSYBOX tee -a $LOG_FILE
+for i in $(BUSYBOX mount | grep ext4 | BUSYBOX cut -d " " -f3); do
+  BUSYBOX mount -o remount,commit=60,discard,nobarrier $i
+done
+echo "     Remounted: No barriers and increase commit time" | BUSYBOX tee -a $LOG_FILE
+
+# /proc filesystem documentation
+# http://www.linuxinsight.com/proc_sys_hierarchy.html
+
+echo " - FS Tweaks" | BUSYBOX tee -a $LOG_FILE
+GAFT_TWEAK "/proc/sys/fs/file-max" "196608"
+GAFT_TWEAK "/proc/sys/fs/inotify/max_queued_events" "32768"
+GAFT_TWEAK "/proc/sys/fs/inotify/max_user_instances" "256"
+GAFT_TWEAK "/proc/sys/fs/inotify/max_user_watches" "16384"
+GAFT_TWEAK "/proc/sys/fs/lease-break-time" "15"
+
+echo " - Kernel Tweaks" | BUSYBOX tee -a $LOG_FILE
+GAFT_TWEAK "/proc/sys/kernel/auto_msgmni" "0"
+GAFT_TWEAK "/proc/sys/kernel/msgmax" "16384"
+GAFT_TWEAK "/proc/sys/kernel/msgmnb" "32768"
+GAFT_TWEAK "/proc/sys/kernel/msgmni" "2048"
+GAFT_TWEAK "/proc/sys/kernel/panic" "10"
+GAFT_TWEAK "/proc/sys/kernel/panic_on_oops" "0"
+GAFT_TWEAK "/proc/sys/kernel/random/read_wakeup_threshold" "128"
+GAFT_TWEAK "/proc/sys/kernel/random/write_wakeup_threshold" "256"
+GAFT_TWEAK "/proc/sys/kernel/sched_latency_ns" "20000000"
+GAFT_TWEAK "/proc/sys/kernel/sched_min_granularity_ns" "4000000"
+GAFT_TWEAK "/proc/sys/kernel/sched_rt_period_us" "1000000"
+GAFT_TWEAK "/proc/sys/kernel/sched_rt_runtime_us" "950000"
+GAFT_TWEAK "/proc/sys/kernel/sched_tunable_scaling" "0"
+GAFT_TWEAK "/proc/sys/kernel/sched_wakeup_granularity_ns" "5000000"
+GAFT_TWEAK "/proc/sys/kernel/sem" "512 65536 64 256"
+GAFT_TWEAK "/proc/sys/kernel/shmall" "4194304"
+GAFT_TWEAK "/proc/sys/kernel/shmmax" "67108864"
+GAFT_TWEAK "/proc/sys/kernel/shmmni" "8192"
+GAFT_TWEAK "/proc/sys/kernel/threads-max" "32768"
+
+echo " - NET Tweaks" | BUSYBOX tee -a $LOG_FILE
+GAFT_TWEAK "/proc/sys/net/core/optmem_max" "20480"
+GAFT_TWEAK "/proc/sys/net/core/rmem_default" "163840"
+GAFT_TWEAK "/proc/sys/net/core/rmem_max" "1048576"
+GAFT_TWEAK "/proc/sys/net/core/wmem_default" "163840"
+GAFT_TWEAK "/proc/sys/net/core/wmem_max" "1048576"
+GAFT_TWEAK "/proc/sys/net/ipv4/tcp_fin_timeout" "30"
+GAFT_TWEAK "/proc/sys/net/ipv4/tcp_keepalive_intvl" "30"
+GAFT_TWEAK "/proc/sys/net/ipv4/tcp_keepalive_probes" "6"
+GAFT_TWEAK "/proc/sys/net/ipv4/tcp_mem" "12288 16384 24576"
+GAFT_TWEAK "/proc/sys/net/ipv4/tcp_rmem" "4096 87380 4194304"
+GAFT_TWEAK "/proc/sys/net/ipv4/tcp_wmem" "4096 16384 4194304"
+GAFT_TWEAK "/proc/sys/net/ipv4/udp_mem" "12288 16384 24576"
+GAFT_TWEAK "/proc/sys/net/ipv4/udp_rmem_min" "4096"
+GAFT_TWEAK "/proc/sys/net/ipv4/udp_wmem_min" "4096"
+
+echo " - VM Tweaks" | BUSYBOX tee -a $LOG_FILE
+GAFT_TWEAK "/proc/sys/vm/dirty_background_ratio" "80"
+GAFT_TWEAK "/proc/sys/vm/dirty_expire_centisecs" "3000"
+GAFT_TWEAK "/proc/sys/vm/dirty_ratio" "95"
+GAFT_TWEAK "/proc/sys/vm/dirty_writeback_centisecs" "1000"
+GAFT_TWEAK "/proc/sys/vm/drop_caches" "3"
+GAFT_TWEAK "/proc/sys/vm/max_map_count" "65536"
+# GAFT_TWEAK "/proc/sys/vm/min_free_kbytes" "4096"
+# GAFT_TWEAK "/proc/sys/vm/min_free_order_shift" "4"
+GAFT_TWEAK "/proc/sys/vm/mmap_min_addr" "0"
+GAFT_TWEAK "/proc/sys/vm/page-cluster" "3"
+GAFT_TWEAK "/proc/sys/vm/swappiness" "0"
+GAFT_TWEAK "/proc/sys/vm/vfs_cache_pressure" "10"
+
+echo " - IO Optimize" | BUSYBOX tee -a $LOG_FILE
+LIST=`ls -d /sys/block/mmc*` 2>&-
+for BLOCK in $LIST; do     # For every block in LIST
+  GAFT_TWEAK "$BLOCK/bdi/read_ahead_kb" "$READ_AHEAD"
+  GAFT_TWEAK "$BLOCK/queue/iosched/back_seek_max" "1000000000"
+  GAFT_TWEAK "$BLOCK/queue/iosched/back_seek_penalty" "1"
+  GAFT_TWEAK "$BLOCK/queue/iosched/low_latency" "1"
+  GAFT_TWEAK "$BLOCK/queue/iosched/slice_idle" "1"
+  GAFT_TWEAK "$BLOCK/queue/iosched/quantum" "16"
+  GAFT_TWEAK "$BLOCK/queue/iostats" "0"
+  GAFT_TWEAK "$BLOCK/queue/nomerges" "1"
+  GAFT_TWEAK "$BLOCK/queue/nr_requests" "1024"
+  GAFT_TWEAK "$BLOCK/queue/read_ahead_kb" "$READ_AHEAD"
+  GAFT_TWEAK "$BLOCK/queue/rotational" "0"
+done
+
+echo " - R/W Speed" | BUSYBOX tee -a $LOG_FILE
+LIST=`ls -d /sys/devices/virtual/bdi/179:*` 2>&-
+for DEVICE in $LIST; do     # For every device in LIST
+  GAFT_TWEAK "$DEVICE/read_ahead_kb" "$READ_AHEAD"
+done
+
+# echo " - RAM Management" | BUSYBOX tee -a $LOG_FILE
+# GAFT_TWEAK "/sys/module/lowmemorykiller/parameters/adj" "0,1,2,4,9,15"
+# GAFT_TWEAK "/sys/module/lowmemorykiller/parameters/cost" "64"
+# GAFT_TWEAK "/sys/module/lowmemorykiller/parameters/debug_level" "0"
+# GAFT_TWEAK "/sys/module/lowmemorykiller/parameters/minfree" "2048,4096,8192,12288,16384,24576"
+
+echo " - Lower Animations" | BUSYBOX tee -a $LOG_FILE
+GAFT_DBSET "global" "window_animation_scale" "0.5"
+GAFT_DBSET "global" "transition_animation_scale" "0.5"
+GAFT_DBSET "global" "animator_duration_scale" "0.5"
+
+echo " - Wi-Fi Wait" | BUSYBOX tee -a $LOG_FILE
+GAFT_DBSET "global" "wifi_sleep_policy" "0"
+GAFT_DBSET "secure" "wifi_idle_ms" "$WIFI_WAIT"
+
+echo -e "Finished: $( date +"%m-%d-%Y %H:%M:%S" )\n" | BUSYBOX tee -a $LOG_FILE
